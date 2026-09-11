@@ -103,6 +103,13 @@ describe("UserManagementService", () => {
     expect(request).toHaveBeenNthCalledWith(2, "/api/v1/tenant/agent-invitations", { method: "POST", body: { email: "agent@test" } });
     expect(publicApi.inspectAgentInvitation).toHaveBeenCalledWith("token");
     expect(publicApi.acceptAgentInvitation).toHaveBeenCalledWith("token", undefined, undefined);
-    expect(request.mock.calls.flat()).not.toContain("tenant_id");
+    for (const [, options] of request.mock.calls) {
+      const requestOptions = options as { body?: unknown };
+      expect(Object.keys(requestOptions)).not.toContain("tenant_id");
+      const body = requestOptions.body;
+      if (body && typeof body === "object" && !Array.isArray(body)) {
+        expect(Object.keys(body)).not.toContain("tenant_id");
+      }
+    }
   });
 });

@@ -45,7 +45,7 @@ Las dos filas con propietario `parent` se conservaron sin cambios y quedan difer
 
 | Ciclo | Evidencia | Resultado |
 |---|---|---|
-| RED | No se agregaron pruebas RED nuevas en apply: el usuario solicitó completar únicamente artifacts SDD y la evidencia residual faltante no se simuló. | Pendiente para tareas RED restantes |
+| RED | Las cinco pruebas residuales están escritas en `src/data/agentInvitations.test.ts`, `src/application/userManagementService.test.ts`, `src/App.test.tsx`, `src/features/user-management/UserManagementPage.test.tsx` y `src/features/agent-invitations/AgentInvitationAcceptancePage.test.tsx`; la focused suite real documentada (`npx vitest run src/App.test.tsx src/data/agentInvitations.test.ts src/application/userManagementService.test.ts src/features/user-management/UserManagementPage.test.tsx src/features/agent-invitations/AgentInvitationAcceptancePage.test.tsx`) pasó 5 archivos/22 tests. Esta evidencia confirma `Written` y ejecución real disponible, sin inventar una ejecución RED histórica anterior al registro. | Completado con evidencia real disponible para las cinco tareas RED |
 | GREEN | Implementación HU-007 preexistente en los seis archivos indicados; no hubo cambios de producción durante apply. | Verificada por suite/build |
 | TRIANGULATE | Inspección de `App.tsx`, `apiClient.ts`, `userManagementService.ts`, ambas páginas, dobles de pruebas y búsqueda de consumidores legacy. | Completado para las filas marcadas |
 | REFACTOR | Suite y build reproducidos; `git diff --check` sin salida. No se hicieron cambios de producto. | Completado para las filas marcadas |

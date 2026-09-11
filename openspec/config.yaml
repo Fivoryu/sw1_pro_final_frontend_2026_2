@@ -1,0 +1,38 @@
+project:
+  name: RoomForge Panel
+  repository_root: panel
+  repository_type: independent-git-repository
+  stack: React + TypeScript + Vite
+  source_evidence: README.md
+
+sdd:
+  artifact_store: hybrid
+  language: es
+  code_language: en
+  strict_tdd: true
+  phase_order:
+    - explore
+    - propose
+    - spec
+    - design
+    - tasks
+    - apply
+    - verify
+    - archive
+  delivery_strategy: ask-on-risk
+  review_line_budget: 400
+  allowed_edit_roots:
+    - panel/
+
+testing:
+  runner: null
+  command: null
+  status: unavailable
+  evidence: >-
+    No package manifest, test configuration, or source code exists in panel/.
+
+conventions:
+  documentation: Spanish professional
+  identifiers: English
+  commits: prohibited for this initialization
+  pushes: prohibited for this initialization

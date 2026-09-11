@@ -1,4 +1,7 @@
 export type LoginCredentials = Readonly<Record<"correo" | "password", string>>;
+export type AgentInvitation = Readonly<{ id: string; email: string; status: "pending" | "accepted" | "invalidated" | "expired"; expires_at: string; delivery_status: "pending" | "delivered" | "failed" }>;
+export type AgentInvitationInspection = Readonly<{ requires_password: boolean; expires_at: string }>;
+export type AgentInvitationAcceptance = Readonly<{ invitation_status: "accepted"; membership_status: "pending"; membership_id: string }>;
 export type TokenResponse = Readonly<
   Record<"access_token" | "refresh_token" | "expira_en", string>
 >;
@@ -22,6 +25,11 @@ const messages = {
   TENANT_ADMIN_REQUIRED: "A tenant administrator is required.",
   SUBSCRIPTION_TRANSITION_NOT_ALLOWED:
     "The subscription transition is not allowed.",
+  INVITATION_UNAVAILABLE: "The invitation is no longer available.",
+  INVITATION_PASSWORD_REQUIRED: "A valid invitation password is required.",
+  AGENT_MEMBERSHIP_EXISTS: "The agent is already associated with this tenant.",
+  INVALID_EMAIL: "The email address is invalid.",
+  CLIENT_AUTHORITY_FIELD_FORBIDDEN: "Tenant authority cannot be supplied by the client.",
   NETWORK_ERROR: "The service could not be reached.",
   INVALID_RESPONSE: "The service returned an invalid response.",
   NO_SESSION: "There is no active session.",
@@ -54,6 +62,11 @@ const backendCodes = new Set<ApiErrorCode>([
   "SUBSCRIPTION_RESTRICTED",
   "TENANT_ADMIN_REQUIRED",
   "SUBSCRIPTION_TRANSITION_NOT_ALLOWED",
+  "INVITATION_UNAVAILABLE",
+  "INVITATION_PASSWORD_REQUIRED",
+  "AGENT_MEMBERSHIP_EXISTS",
+  "INVALID_EMAIL",
+  "CLIENT_AUTHORITY_FIELD_FORBIDDEN",
 ]);
 const readBackendCode = async (
   response: Response,
@@ -104,6 +117,18 @@ export class ApiClient {
     return this.tokenRequest("/api/v1/auth/refresh", {
       refresh_token: refreshToken,
     });
+  }
+  listAgentInvitations(accessToken: string): Promise<AgentInvitation[]> {
+    return this.request("/api/v1/tenant/agent-invitations", { method: "GET", accessToken });
+  }
+  createAgentInvitation(accessToken: string, email: string): Promise<AgentInvitation> {
+    return this.request("/api/v1/tenant/agent-invitations", { method: "POST", accessToken, body: { email } });
+  }
+  inspectAgentInvitation(token: string): Promise<AgentInvitationInspection> {
+    return this.request("/api/v1/agent-invitations/inspect", { method: "POST", body: { token } });
+  }
+  acceptAgentInvitation(token: string, password?: string, passwordConfirmation?: string): Promise<AgentInvitationAcceptance> {
+    return this.request("/api/v1/agent-invitations/accept", { method: "POST", body: { token, ...(password === undefined ? {} : { password, password_confirmation: passwordConfirmation }) } });
   }
   async logout(refreshToken: string): Promise<void> {
     await this.request("/api/v1/auth/logout", {

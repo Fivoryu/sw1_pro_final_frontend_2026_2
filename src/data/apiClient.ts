@@ -33,6 +33,9 @@ const messages = {
   NETWORK_ERROR: "The service could not be reached.",
   INVALID_RESPONSE: "The service returned an invalid response.",
   NO_SESSION: "There is no active session.",
+  AGENT_MEMBERSHIP_PENDING: "The agent already has a pending membership.",
+  AGENT_INVITATION_FAILED: "The invitation could not be completed.",
+  REQUEST_SCHEMA_INVALID: "The invitation request was invalid.",
 } as const;
 export type ApiErrorCode = keyof typeof messages;
 export interface ApiClientOptions {
@@ -48,6 +51,29 @@ export class ApiClientError extends Error {
     this.name = "ApiClientError";
   }
 }
+const invitationErrorMessages: Partial<Record<ApiErrorCode, string>> = {
+  NETWORK_ERROR: "No se pudo conectar con el servicio. Verifica tu conexión e inténtalo nuevamente.",
+  NO_SESSION: "La sesión administrativa no está disponible. Inicia sesión nuevamente.",
+  TENANT_ADMIN_REQUIRED: "Solo un administrador del tenant puede gestionar invitaciones.",
+  INVALID_EMAIL: "Ingresa un correo electrónico válido.",
+  INVITATION_UNAVAILABLE: "El enlace no es válido, expiró, fue reemplazado o ya fue utilizado.",
+  INVITATION_PASSWORD_REQUIRED: "La contraseña no cumple la política o las confirmaciones no coinciden.",
+  AGENT_MEMBERSHIP_EXISTS: "El agente ya pertenece a este tenant. La resolución corresponde a la gestión de membresías.",
+  AGENT_MEMBERSHIP_PENDING: "El agente ya tiene una membresía pendiente en este tenant.",
+  REQUEST_SCHEMA_INVALID: "Los datos de la invitación no son válidos.",
+  AGENT_INVITATION_FAILED: "No se pudo completar la invitación. Inténtalo nuevamente.",
+};
+
+export const messageForAgentInvitationError = (error: unknown): string => {
+  const code =
+    error instanceof ApiClientError
+      ? error.code
+      : error && typeof error === "object" && "code" in error && typeof error.code === "string"
+        ? (error.code as ApiErrorCode)
+        : undefined;
+  return invitationErrorMessages[code ?? ""] ?? "No se pudo completar la operación de invitación.";
+};
+
 const statusCodes: Partial<Record<number, ApiErrorCode>> = {
   401: "UNAUTHORIZED",
   403: "FORBIDDEN",
@@ -65,6 +91,9 @@ const backendCodes = new Set<ApiErrorCode>([
   "INVITATION_UNAVAILABLE",
   "INVITATION_PASSWORD_REQUIRED",
   "AGENT_MEMBERSHIP_EXISTS",
+  "AGENT_MEMBERSHIP_PENDING",
+  "AGENT_INVITATION_FAILED",
+  "REQUEST_SCHEMA_INVALID",
   "INVALID_EMAIL",
   "CLIENT_AUTHORITY_FIELD_FORBIDDEN",
 ]);

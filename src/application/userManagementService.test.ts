@@ -6,7 +6,9 @@ import { UserNotFoundError } from "../domain/user";
 import {
   UserManagementService,
   UserValidationError,
+  type InvitationApi,
 } from "./userManagementService";
+import type { SessionService } from "./sessionService";
 
 const valid = {
   name: " Ana ",
@@ -81,5 +83,26 @@ describe("UserManagementService", () => {
     await expect(service.updateUser("missing", valid)).rejects.toBeInstanceOf(
       UserNotFoundError,
     );
+  });
+
+  it("keeps administrative and public invitation seams separate", async () => {
+    const publicApi: InvitationApi = {
+      listAgentInvitations: vi.fn(),
+      createAgentInvitation: vi.fn(),
+      inspectAgentInvitation: vi.fn(async () => ({ requires_password: false, expires_at: "2030-01-01T00:00:00Z" })),
+      acceptAgentInvitation: vi.fn(async () => ({ invitation_status: "accepted", membership_status: "pending", membership_id: "membership" })),
+    };
+    const request = vi.fn(async (path: string, _options?: unknown) => path.includes("agent-invitations") ? [] : undefined);
+    const session = { request } as unknown as SessionService;
+    const service = new UserManagementService(publicApi, session);
+    await service.listInvitations();
+    await service.createInvitation("agent@test");
+    await service.inspectInvitation("token");
+    await service.acceptInvitation("token");
+    expect(request).toHaveBeenNthCalledWith(1, "/api/v1/tenant/agent-invitations", { method: "GET" });
+    expect(request).toHaveBeenNthCalledWith(2, "/api/v1/tenant/agent-invitations", { method: "POST", body: { email: "agent@test" } });
+    expect(publicApi.inspectAgentInvitation).toHaveBeenCalledWith("token");
+    expect(publicApi.acceptAgentInvitation).toHaveBeenCalledWith("token", undefined, undefined);
+    expect(request.mock.calls.flat()).not.toContain("tenant_id");
   });
 });

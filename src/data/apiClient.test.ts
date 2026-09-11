@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { ApiClient, ApiClientError, type TokenResponse } from "./apiClient";
+import {
+  ApiClient,
+  ApiClientError,
+  messageForAgentInvitationError,
+  type TokenResponse,
+} from "./apiClient";
 const tokenPair: TokenResponse = {
   access_token: "access-token",
   refresh_token: "refresh-token",
@@ -55,6 +60,43 @@ describe("ApiClient", () => {
     for (const [url] of fetchImpl.mock.calls)
       expect(url).not.toContain(tokenPair.refresh_token);
   });
+  it("maps HU-007 backend codes without falling back to status-only errors", async () => {
+    const cases = [
+      ["INVITATION_UNAVAILABLE", 410],
+      ["INVITATION_PASSWORD_REQUIRED", 422],
+      ["AGENT_MEMBERSHIP_EXISTS", 409],
+      ["AGENT_MEMBERSHIP_PENDING", 409],
+      ["INVALID_EMAIL", 422],
+    ] as const;
+    for (const [code, status] of cases) {
+      const failure = await new ApiClient({
+        fetchImpl: vi.fn(async () => response(status, { code })),
+      })
+        .inspectAgentInvitation("opaque-token")
+        .catch((error: unknown) => error);
+      expect(failure).toMatchObject({ code, status });
+    }
+  });
+
+  it("maps invitation failures to actionable safe messages", () => {
+    expect(
+      messageForAgentInvitationError(new ApiClientError("NETWORK_ERROR")),
+    ).toMatch(/conectar|conexión/i);
+    expect(
+      messageForAgentInvitationError(
+        new ApiClientError("INVITATION_UNAVAILABLE", 410),
+      ),
+    ).toMatch(/válido|expiró|reemplazado|utilizado/i);
+    expect(
+      messageForAgentInvitationError(
+        new ApiClientError("AGENT_MEMBERSHIP_EXISTS", 409),
+      ),
+    ).toMatch(/ya pertenece|membresías/i);
+    expect(messageForAgentInvitationError(new Error("secret"))).not.toContain(
+      "secret",
+    );
+  });
+
   it("maps HTTP, network, and malformed responses to safe stable errors", async () => {
     const secret = "response-secret",
       cases = [

@@ -10,6 +10,10 @@ import {
   UserValidationError,
 } from "../../application/userManagementService";
 import {
+  messageForAgentInvitationError,
+  type AgentInvitation,
+} from "../../data/apiClient";
+import {
   INACTIVE_STATUS,
   normalizeUserDraft,
   validateUserDraft,
@@ -277,20 +281,138 @@ export function UserManagementPage({
   );
 }
 
+const invitationStatusLabels: Record<AgentInvitation["status"], string> = {
+  pending: "Pendiente",
+  accepted: "Aceptada",
+  invalidated: "Invalidada",
+  expired: "Expirada",
+};
+
+const canReinvite = (status: AgentInvitation["status"]) =>
+  status === "pending" || status === "invalidated" || status === "expired";
+
 function InvitationManagement({ service }: { service: UserManagementService }) {
   const [email, setEmail] = useState("");
-  const [invitations, setInvitations] = useState<readonly { id: string; email: string; status: string }[]>([]);
+  const [invitations, setInvitations] = useState<readonly AgentInvitation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const load = async () => { setLoading(true); setError(""); try { setInvitations(await service.listInvitations()); } catch { setError("No se pudieron cargar las invitaciones."); } finally { setLoading(false); } };
-  useEffect(() => { void load(); }, [service]);
-  const submit = async (event: FormEvent) => { event.preventDefault(); setError(""); try { await service.createInvitation(email.trim()); setEmail(""); setMessage("Invitación emitida. El enlace se envió al correo indicado."); await load(); } catch { setError("No se pudo emitir la invitación. Revise el correo o el conflicto existente."); } };
-  const reinvite = async (address: string) => { try { await service.createInvitation(address); setMessage("La invitación anterior fue reemplazada de forma segura."); await load(); } catch { setError("No se pudo reenviar la invitación."); } };
-  return <main className="page" aria-busy={loading}>
-    <header className="page-header"><p className="eyebrow">Superficie administrativa</p><h1>Invitaciones de agentes</h1><p>Incorpora agentes con un enlace seguro. La aceptación crea una membresía pendiente.</p></header>
-    <section className="card"><h2>Invitar agente</h2><form onSubmit={submit}><label htmlFor="agent-email">Correo electrónico</label><input id="agent-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /><button className="primary" type="submit" disabled={loading}>Enviar invitación</button></form></section>
-    {error && <p className="feedback error" role="alert">{error}</p>}{message && <p className="feedback success" role="status">{message}</p>}
-    <section className="card"><h2>Estado de invitaciones</h2>{loading ? <p role="status">Cargando invitaciones…</p> : <ul>{invitations.map((invitation) => <li key={invitation.id}><span>{invitation.email}</span> — <strong>{invitation.status}</strong>{invitation.status === "pending" && <button type="button" onClick={() => void reinvite(invitation.email)}>Reinvitar</button>}</li>)}</ul>}</section>
-  </main>;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setInvitations(await service.listInvitations());
+    } catch (failure) {
+      setError(messageForAgentInvitationError(failure));
+    } finally {
+      setLoading(false);
+    }
+  }, [service]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    setSaving(true);
+    try {
+      await service.createInvitation(email.trim());
+      setEmail("");
+      setMessage("Invitación emitida. El enlace se envió al correo indicado.");
+      await load();
+    } catch (failure) {
+      setError(messageForAgentInvitationError(failure));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const reinvite = async (address: string) => {
+    setError("");
+    setMessage("");
+    setSaving(true);
+    try {
+      await service.createInvitation(address);
+      setMessage("La invitación anterior fue reemplazada de forma segura.");
+      await load();
+    } catch (failure) {
+      setError(messageForAgentInvitationError(failure));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <main className="page" aria-busy={loading || saving}>
+      <header className="page-header">
+        <p className="eyebrow">Superficie administrativa</p>
+        <h1>Invitaciones de agentes</h1>
+        <p>
+          Incorpora agentes con un enlace seguro. La aceptación crea una
+          membresía pendiente.
+        </p>
+      </header>
+      <section className="card">
+        <h2>Invitar agente</h2>
+        <form onSubmit={submit}>
+          <label htmlFor="agent-email">Correo electrónico</label>
+          <input
+            id="agent-email"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            required
+          />
+          <button className="primary" type="submit" disabled={loading || saving}>
+            Enviar invitación
+          </button>
+        </form>
+      </section>
+      {error && (
+        <p className="feedback error" role="alert">
+          {error}
+          <button type="button" onClick={() => void load()} disabled={loading || saving}>
+            Reintentar
+          </button>
+        </p>
+      )}
+      {message && <p className="feedback success" role="status">{message}</p>}
+      <section className="card">
+        <h2>Estado de invitaciones</h2>
+        {loading ? (
+          <p role="status">Cargando invitaciones…</p>
+        ) : invitations.length === 0 ? (
+          <p>No hay invitaciones emitidas.</p>
+        ) : (
+          <ul className="user-list">
+            {invitations.map((invitation) => (
+              <li key={invitation.id}>
+                <span>{invitation.email}</span>{" "}
+                <strong>{invitationStatusLabels[invitation.status]}</strong>
+                <time dateTime={invitation.expires_at}>
+                  {` · vence ${new Date(invitation.expires_at).toLocaleDateString()}`}
+                </time>
+                {invitation.delivery_status === "failed" && (
+                  <p className="field-error">No se pudo entregar el correo.</p>
+                )}
+                {canReinvite(invitation.status) && (
+                  <button
+                    type="button"
+                    onClick={() => void reinvite(invitation.email)}
+                    disabled={loading || saving}
+                  >
+                    Reinvitar
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </main>
+  );
 }

@@ -5,6 +5,7 @@ import { InMemoryUserRepository } from "../../data/InMemoryUserRepository";
 import { demoUsers } from "../../data/fixtures/users";
 import { UserManagementService } from "../../application/userManagementService";
 import { UserManagementPage } from "./UserManagementPage";
+import { ApiClientError, type AgentInvitation } from "../../data/apiClient";
 
 const renderPage = (
   service = new UserManagementService(new InMemoryUserRepository(demoUsers)),
@@ -149,5 +150,70 @@ describe("UserManagementPage", () => {
       "No se pudo completar la operación local.",
     );
     expect(screen.getByLabelText(/^Nombre/)).toHaveValue("Nuevo");
+  });
+
+  it("represents every HU-007 status and offers safe reinvitation", async () => {
+    const invitations: AgentInvitation[] = [
+      { id: "pending", email: "pending@test", status: "pending", expires_at: "2030-01-01T00:00:00Z", delivery_status: "delivered" },
+      { id: "accepted", email: "accepted@test", status: "accepted", expires_at: "2030-01-02T00:00:00Z", delivery_status: "delivered" },
+      { id: "invalidated", email: "invalidated@test", status: "invalidated", expires_at: "2030-01-03T00:00:00Z", delivery_status: "failed" },
+      { id: "expired", email: "expired@test", status: "expired", expires_at: "2020-01-04T00:00:00Z", delivery_status: "delivered" },
+    ];
+    const service = {
+      isInvitationMode: () => true,
+      listInvitations: vi.fn(async () => invitations),
+      createInvitation: vi.fn(async () => invitations[0]),
+    } as unknown as UserManagementService;
+    const user = userEvent.setup();
+    renderPage(service);
+    expect(await screen.findByText("Pendiente")).toBeInTheDocument();
+    expect(screen.getByText("Aceptada")).toBeInTheDocument();
+    expect(screen.getByText("Invalidada")).toBeInTheDocument();
+    expect(screen.getByText("Expirada")).toBeInTheDocument();
+    expect(screen.getByText("No se pudo entregar el correo.")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Reinvitar" })).toHaveLength(3);
+    await user.click(screen.getAllByRole("button", { name: "Reinvitar" })[0]);
+    expect(await screen.findByRole("status")).toHaveTextContent(/reemplazada/i);
+    expect(service.createInvitation).toHaveBeenCalledWith("pending@test");
+  });
+
+  it("offers a retry for network failures and maps membership conflicts", async () => {
+    let attempts = 0;
+    const service = {
+      isInvitationMode: () => true,
+      listInvitations: vi.fn(async () => {
+        if (attempts++ === 0) throw new ApiClientError("NETWORK_ERROR");
+        return [];
+      }),
+      createInvitation: vi.fn(async () => {
+        throw new ApiClientError("AGENT_MEMBERSHIP_EXISTS", 409);
+      }),
+    } as unknown as UserManagementService;
+    const user = userEvent.setup();
+    renderPage(service);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/conectar|conexión/i);
+    await user.click(screen.getByRole("button", { name: "Reintentar" }));
+    expect(await screen.findByText("No hay invitaciones emitidas.")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Correo electrónico"), "agent@test");
+    await user.click(screen.getByRole("button", { name: "Enviar invitación" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/ya pertenece/i);
+  });
+
+  it("blocks duplicate reinvitations while the first request is pending", async () => {
+    const invitation: AgentInvitation = { id: "pending", email: "pending@test", status: "pending", expires_at: "2030-01-01T00:00:00Z", delivery_status: "delivered" };
+    let resolve: (() => void) | undefined;
+    const service = {
+      isInvitationMode: () => true,
+      listInvitations: vi.fn(async () => [invitation]),
+      createInvitation: vi.fn(() => new Promise<void>((done) => { resolve = done; })),
+    } as unknown as UserManagementService;
+    const user = userEvent.setup();
+    renderPage(service);
+    const button = await screen.findByRole("button", { name: "Reinvitar" });
+    await user.click(button);
+    expect(button).toBeDisabled();
+    expect(service.createInvitation).toHaveBeenCalledTimes(1);
+    resolve?.();
+    expect(await screen.findByRole("status")).toHaveTextContent(/reemplazada/i);
   });
 });

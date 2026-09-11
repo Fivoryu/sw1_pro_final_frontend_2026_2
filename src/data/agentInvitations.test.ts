@@ -21,4 +21,13 @@ describe("HU-007 API", () => {
     expect(fetchImpl).toHaveBeenNthCalledWith(1, "/api/v1/tenant/agent-invitations", expect.objectContaining({ method: "GET" }));
     expect(fetchImpl).toHaveBeenNthCalledWith(2, "/api/v1/tenant/agent-invitations", expect.objectContaining({ body: JSON.stringify({ email: " A@Example.COM " }) }));
   });
+
+  it("sends conditional acceptance credentials only when supplied", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ invitation_status: "accepted", membership_status: "pending", membership_id: "membership" }), { status: 200 }));
+    const api = new ApiClient({ fetchImpl });
+    await api.acceptAgentInvitation("new-token", "password123", "password123");
+    await api.acceptAgentInvitation("existing-token");
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, "/api/v1/agent-invitations/accept", expect.objectContaining({ body: JSON.stringify({ token: "new-token", password: "password123", password_confirmation: "password123" }) }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, "/api/v1/agent-invitations/accept", expect.objectContaining({ body: JSON.stringify({ token: "existing-token" }) }));
+  });
 });
